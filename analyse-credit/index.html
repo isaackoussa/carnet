@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atelier Crédit</title>
+<meta name="description" content="Pratiquer l'analyse financière et l'analyse crédit sur des cas concrets : calculs guidés, graphiques, simulateurs et exercices.">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a href="#/" class="brand"><span class="brand-mark">AC</span> Atelier Crédit</a>
+  <nav id="nav">
+    <a href="#/cas" data-view="cas">Cas pratiques</a>
+    <a href="#/labo" data-view="labo">Simulateurs</a>
+    <a href="#/exercices" data-view="exercices">Exercices</a>
+    <a href="#/dossier" data-view="dossier">Analyser un dossier</a>
+    <a href="#/fiches" data-view="fiches">Fiches méthode</a>
+  </nav>
+  <button id="themeToggle" class="icon-btn" aria-label="Changer de thème" title="Changer de thème"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button>
+</header>
+<main id="app" class="container"></main>
+<footer class="foot container">Montants en millions de FCFA (M). Entreprises et chiffres fictifs, à but pédagogique. Seuils indicatifs, à adapter selon le secteur et la banque.</footer>
+
+<script src="engine.js"></script>
+<script src="data.js"></script>
+<script src="content.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
