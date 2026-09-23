@@ -1,5 +1,7 @@
 # Cabinet de Lecture
 
+> Ce dépôt contient aussi **Atelier Crédit** (`analyse-credit/`), une app pour pratiquer l'analyse financière et crédit. Voir `analyse-credit/README.md` (variables Brevo à ajouter dans Netlify pour la connexion par e-mail).
+
 App web pour extraire l'essentiel de tes ebooks, générer des quiz et lancer des réflexions/débats, avec rappels de lecture.
 
 ## Déploiement (comme gbaka-app)
