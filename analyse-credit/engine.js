@@ -50,6 +50,12 @@ const Engine = (() => {
       roe: rn / y.capitauxPropres,
       roce: rex / (y.immoNettes + bfr),
       chargesPersoVA: y.chargesPersonnel / va,
+      tauxVA: va / y.ca,
+      liquiditeRed: (y.creances + y.autresCreances + y.tresoActif) / (passifCirculant + y.tresoPassif),
+      liquiditeImm: y.tresoActif / (passifCirculant + y.tresoPassif),
+      cycle: (y.creances / y.ca) * 360 + (y.stocks / y.achats) * 360 - (y.fournisseurs / (y.achats + y.servicesExt)) * 360,
+      endettement: y.capitauxPropres > 0 ? y.dettesFinancieres / y.capitauxPropres : Infinity,
+      poidsFF: y.fraisFinanciers / y.ca,
     };
   }
 
@@ -64,6 +70,15 @@ const Engine = (() => {
     liquiditeGen: { good: 1.3, bad: 1.0, higher: true, label: 'Liquidité générale', fmt: 'x' },
     bfrJours:   { good: 45,   bad: 90,   higher: false, label: 'BFR en jours de CA', fmt: 'j' },
     roe:        { good: 0.12, bad: 0.04, higher: true,  label: 'Rentabilité des capitaux propres (ROE)', fmt: 'pct' },
+    roce:       { good: 0.10, bad: 0.04, higher: true,  label: 'Rentabilité économique (ROCE)', fmt: 'pct' },
+    chargesPersoVA: { good: 0.60, bad: 0.75, higher: false, label: 'Charges de personnel / VA', fmt: 'pct' },
+    liquiditeRed: { good: 1.0, bad: 0.7, higher: true, label: 'Liquidité réduite', fmt: 'x' },
+    liquiditeImm: { good: 0.3, bad: 0.1, higher: true, label: 'Liquidité immédiate', fmt: 'x' },
+    dso:        { good: 60,   bad: 90,   higher: false, label: 'Délai clients', fmt: 'j' },
+    dio:        { good: 60,   bad: 90,   higher: false, label: 'Rotation des stocks', fmt: 'j' },
+    cycle:      { good: 45,   bad: 90,   higher: false, label: 'Cycle de conversion de trésorerie', fmt: 'j' },
+    endettement: { good: 1.0, bad: 2.0,  higher: false, label: 'Dettes financières / capitaux propres', fmt: 'x' },
+    poidsFF:    { good: 0.03, bad: 0.05, higher: false, label: 'Frais financiers / CA', fmt: 'pct' },
   };
 
   function status(key, value) {

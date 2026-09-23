@@ -102,6 +102,30 @@ function waterfall(canvasId, y, m) {
   });
 }
 
+// Bilan fonctionnel empilé : emplois (immobilisations, BFR, trésorerie) face aux ressources.
+function bilanChart(canvasId, y, m) {
+  const emplois = [y.immoNettes, Math.max(m.bfr, 0), y.tresoActif, 0];
+  const ressources = [y.capitauxPropres, y.dettesFinancieres, Math.max(-m.bfr, 0), y.tresoPassif];
+  const ds = [
+    { label: 'Immobilisations / capitaux propres', data: [emplois[0], ressources[0]], color: '--s1' },
+    { label: 'BFR / dettes MLT', data: [emplois[1], ressources[1]], color: '--s2' },
+    { label: 'Trésorerie actif / BFR négatif', data: [emplois[2], ressources[2]], color: '--s3' },
+    { label: 'Découverts', data: [emplois[3], ressources[3]], color: '--s4' },
+  ];
+  return chart(canvasId, {
+    type: 'bar',
+    data: { labels: ['Emplois', 'Ressources'], datasets: ds.map(d => ({ label: d.label, data: d.data, ...barStyle(css(d.color)), borderWidth: { top: 2 }, borderColor: css('--surface'), borderSkipped: 'bottom', borderRadius: 0, maxBarThickness: 90 })) },
+    options: {
+      plugins: { tooltip: { callbacks: { label: ctx => {
+        const names = ctx.dataIndex === 0 ? ['Immobilisations', 'BFR', 'Trésorerie actif', '–'] : ['Capitaux propres', 'Dettes MLT', 'BFR négatif (ressource)', 'Découverts'];
+        return ctx.raw ? ` ${names[ctx.datasetIndex]} : ${E.fmt(ctx.raw)}` : null;
+      } } } },
+      scales: { x: { stacked: true }, y: { stacked: true } },
+    },
+  });
+}
+const BILAN_LEGEND = () => legend([['Immobilisations / capitaux propres', css('--s1')], ['Exploitation (BFR) / dettes MLT', css('--s2')], ['Trésorerie', css('--s3')], ['Découverts', css('--s4')]]);
+
 // ---------- Composants ----------
 const statusChip = (s, text) => `<span class="status ${s}">${text || { good: 'Bon', warn: 'À surveiller', bad: 'Alerte' }[s]}</span>`;
 const tile = (label, value, sub = '') => `<div class="tile"><div class="label">${label}</div><div class="value num">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
@@ -173,7 +197,7 @@ function questionBlock(root, q, onReveal, alreadyDone) {
   root.querySelector('[data-a=show]').onclick = () => { if (q.onAttempt && !revealed) q.onAttempt(false); reveal('info', `<b>Solution :</b> ${fmtAns(q)}.`); };
   if (alreadyDone) reveal('ok', `<b>Déjà résolu :</b> ${fmtAns(q)}.`);
 }
-const fmtAns = q => `la réponse est <b>${q.answer.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} ${q.unit === 'M' ? 'M FCFA' : q.unit === 'j' ? 'jours' : q.unit}</b>`;
+const fmtAns = q => `la réponse est <b>${q.answer.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${q.unit === 'M' ? 'M FCFA' : q.unit === 'j' ? 'jours' : q.unit}</b>`;
 
 // ---------- Vues ----------
 function viewHome() {
@@ -181,19 +205,21 @@ function viewHome() {
   const e = progress.exo;
   app.innerHTML = `
     <section class="hero">
-      <div class="eyebrow">Analyse financière et crédit, par la pratique</div>
+      <div class="eyebrow">Analyse financière et crédit : cours et pratique</div>
       <h1>Apprenez à lire des comptes comme un banquier.</h1>
-      <p>Pas de cours magistral : vous analysez de vrais dossiers de crédit (fictifs), vous faites les calculs vous-même, les graphiques vous montrent ce que les chiffres racontent, et vous prenez la décision.</p>
-      <div class="btn-row"><a class="btn primary" href="#/cas/${CASES[0].id}">Commencer le premier cas →</a><a class="btn" href="#/exercices">S’entraîner aux calculs</a></div>
+      <p>Des cours courts sur chaque ratio et son interprétation, puis de vrais dossiers de crédit (fictifs) : vous faites les calculs vous-même, les graphiques vous montrent ce que les chiffres racontent, et vous prenez la décision.</p>
+      <div class="btn-row"><a class="btn primary" href="#/cours">Commencer par le cours →</a><a class="btn" href="#/cas/${CASES[0].id}">Aller directement au premier cas</a></div>
     </section>
     <div class="tiles">
+      ${tile('Chapitres de cours validés', `${Object.keys(progress.cours || {}).length} / ${CHAPTERS.length}`, 'quiz terminé')}
       ${tile('Cas pratiques terminés', `${done} / ${CASES.length}`)}
       ${tile('Exercices réussis', `${e.correct} / ${e.done}`, e.done ? `${Math.round(e.correct / e.done * 100)} % de réussite` : 'Aucun exercice pour l’instant')}
       ${tile('Meilleure série', e.best, 'bonnes réponses d’affilée')}
     </div>
     <div class="grid grid-2">
       ${[
-        ['#/cas', 'Cas pratiques', '3 entreprises, 3 niveaux. Vous suivez les 7 étapes d’analyse jusqu’à la décision de crédit et la note de crédit rédigée.'],
+        ['#/cours', 'Cours', '8 chapitres et 20 ratios expliqués : formule, exemple chiffré, grille de lecture, repères sectoriels, pièges et quiz d\u2019interprétation.'],
+        ['#/cas', 'Cas pratiques', `${CASES.length} entreprises, 3 niveaux. Vous suivez les 7 étapes d’analyse jusqu’à la décision de crédit et la note de crédit rédigée.`],
         ['#/labo', 'Simulateurs', 'Faites varier les délais clients, la croissance ou le taux d’un prêt, et voyez en direct l’effet sur la trésorerie et le remboursement.'],
         ['#/exercices', 'Exercices express', 'Des calculs avec des chiffres différents à chaque tirage (EBE, CAF, BFR, délais, annuités…), corrigés pas à pas.'],
         ['#/dossier', 'Analyser un dossier', 'Saisissez les comptes d’une vraie entreprise : ratios, graphiques, score de risque et diagnostic automatique.'],
@@ -231,35 +257,71 @@ const CASE_STEPS = [
   { id: 'decision', title: 'Décision' },
 ];
 
+// Bibliothèque de questions : chaque étape a une question par défaut, qu'un cas peut remplacer (c.questions).
+const STEP_QUESTION = { activite: 'ebe', equilibre: 'bfr', rotation: 'dso', endettement: 'caf' };
 function caseQuestion(stepId, c) {
   const i = c.data.length - 1, y = c.data[i], m = E.analyze(y), yr = c.years[i];
+  const key = (c.questions && c.questions[stepId]) || STEP_QUESTION[stepId];
   const Q = {
-    activite: {
+    ebe: {
       prompt: `Calculez l’EBE ${yr} de ${c.name}.`,
       hint: 'Commencez par la valeur ajoutée : CA − achats consommés − services extérieurs. Retirez ensuite les impôts et taxes et les charges de personnel. Les dotations ne comptent pas.',
       answer: m.ebe, unit: 'M',
       solution: `VA = ${y.ca} − ${y.achats} − ${y.servicesExt} = ${E.round(m.va)}\nEBE = ${E.round(m.va)} − ${y.impotsTaxes} − ${y.chargesPersonnel} = ${E.round(m.ebe)} M\nMarge d’EBE = ${E.fmt(m.margeEbe, 'pct')}`,
     },
-    equilibre: {
+    va: {
+      prompt: `Calculez la valeur ajoutée ${yr} de ${c.name}.`,
+      hint: 'VA = chiffre d’affaires − achats consommés − transports et services extérieurs. C’est la richesse créée par l’entreprise elle-même.',
+      answer: m.va, unit: 'M',
+      solution: `VA = ${y.ca} − ${y.achats} − ${y.servicesExt} = ${E.round(m.va)} M\nTaux de VA = ${E.fmt(m.tauxVA, 'pct')} du CA\nEBE = ${E.round(m.va)} − ${y.impotsTaxes} − ${y.chargesPersonnel} = ${E.round(m.ebe)} M`,
+    },
+    bfr: {
       prompt: `Calculez le BFR ${yr}.`,
       hint: 'BFR = (stocks + créances clients + autres créances) − (dettes fournisseurs + dettes fiscales et sociales). La trésorerie n’entre pas dans le calcul.',
       answer: m.bfr, unit: 'M',
       solution: `Actif circulant = ${y.stocks} + ${y.creances} + ${y.autresCreances} = ${E.round(m.actifCirculant)}\nPassif circulant = ${y.fournisseurs} + ${y.dettesFiscalesSociales} = ${E.round(m.passifCirculant)}\nBFR = ${E.round(m.actifCirculant)} − ${E.round(m.passifCirculant)} = ${E.round(m.bfr)} M`,
     },
-    rotation: {
+    fr: {
+      prompt: `Calculez le fonds de roulement ${yr}.`,
+      hint: 'FR = ressources stables (capitaux propres + dettes financières MLT) − immobilisations nettes.',
+      answer: m.fr, unit: 'M',
+      solution: `Ressources stables = ${y.capitauxPropres} + ${y.dettesFinancieres} = ${E.round(m.ressourcesStables)}\nFR = ${E.round(m.ressourcesStables)} − ${y.immoNettes} = ${E.round(m.fr)} M\nBFR = ${E.round(m.bfr)} M, donc trésorerie nette = ${E.round(m.tn)} M`,
+    },
+    dso: {
       prompt: `Calculez le délai moyen de paiement des clients en ${yr} (en jours).`,
       hint: 'Délai clients = créances clients / chiffre d’affaires × 360.',
       answer: E.round(m.dso), unit: 'j', tol: 1,
       solution: `DSO = ${y.creances} / ${y.ca} × 360 = ${E.round(m.dso)} jours`,
     },
-    endettement: {
+    dio: {
+      prompt: `Calculez la durée de rotation des stocks en ${yr} (en jours d’achats).`,
+      hint: 'Rotation des stocks = stocks / achats consommés × 360.',
+      answer: E.round(m.dio), unit: 'j', tol: 1,
+      solution: `DIO = ${y.stocks} / ${y.achats} × 360 = ${E.round(m.dio)} jours`,
+    },
+    caf: {
       prompt: `Calculez la CAF ${yr}.`,
       hint: 'Il faut d’abord le résultat net : EBE − dotations + résultat financier + résultat HAO − impôt. Ajoutez ensuite les dotations. (Pour simplifier, on garde ici le HAO dans la CAF.)',
       answer: m.caf, unit: 'M',
       solution: `Résultat net = EBE ${E.round(m.ebe)} − dotations ${y.dotations} + résultat fin. (${E.round(m.rf)}) + HAO ${y.hao} − impôt ${y.impotResultat} = ${E.round(m.rn)}\nCAF = ${E.round(m.rn)} + ${y.dotations} = ${E.round(m.caf)} M`,
     },
+    gearing: {
+      prompt: `Calculez le gearing ${yr} (dette nette / capitaux propres).`,
+      hint: 'Dette nette = dettes financières MLT + découverts − trésorerie actif. Divisez ensuite par les capitaux propres.',
+      answer: E.round(m.gearing, 2), unit: 'x', tol: 0.03,
+      solution: `Dette nette = ${y.dettesFinancieres} + ${y.tresoPassif} − ${y.tresoActif} = ${E.round(m.detteNette)}\nGearing = ${E.round(m.detteNette)} / ${y.capitauxPropres} = ${E.fmt(m.gearing, 'x')}`,
+    },
   };
-  return Q[stepId];
+  return Q[key];
+}
+
+// Charge de la demande : intérêts pour un crédit court terme, annuité pour un prêt amortissable.
+function requestCost(r) {
+  return r.kind === 'ct' ? r.amount * r.rate * (r.months || 12) / 12 : E.loanSchedule(r.amount, r.rate, r.years)[0].payment;
+}
+function requestLabel(r) {
+  const rate = (r.rate * 100).toLocaleString('fr-FR') + ' %';
+  return r.kind === 'ct' ? ` (court terme, ${r.months} mois, taux ${rate})` : ` sur ${r.years} ans à ${rate}`;
 }
 
 function viewCase(id) {
@@ -292,8 +354,8 @@ function viewCase(id) {
       <div class="grid grid-2">
         <div class="card"><div class="eyebrow">L’entreprise</div>${c.context.map(t => `<p>${t}</p>`).join('')}</div>
         <div class="card"><div class="eyebrow">La demande de crédit</div>
-          <p><b>${E.fmt(c.request.amount)} FCFA</b>${c.request.years > 1 ? ` sur ${c.request.years} ans à ${(c.request.rate * 100).toLocaleString('fr-FR')} %` : ` (découvert, taux ${(c.request.rate * 100).toLocaleString('fr-FR')} %)`}</p>
-          <p>${c.request.object}</p>
+          <p><b>${E.fmt(c.request.amount)} FCFA</b>${requestLabel(c.request)}</p>
+          <p>${c.request.object}</p>${c.request.note ? `<p class="small">${c.request.note}</p>` : ''}
           <p class="small muted">Votre mission : analyser les comptes étape par étape et proposer une décision au comité de crédit.</p>
         </div>
       </div>
@@ -363,7 +425,7 @@ function renderAnalysis(stepId, c, root) {
           ${legend([['Fonds de roulement', css('--s1')], ['BFR', css('--s2')], ['Trésorerie nette', css('--s3')]])}
           <div class="chart-box tall"><canvas id="c1"></canvas></div></div>
         <div class="card chart-card"><h3>Qui finance quoi ? (${c.years[i]})</h3><div class="sub">Emplois à gauche, ressources à droite, en M FCFA</div>
-          ${legend([['Immobilisations / capitaux propres', css('--s1')], ['Exploitation (BFR) / dettes MLT', css('--s2')], ['Trésorerie', css('--s3')], ['Découverts', css('--s4')]])}
+          ${BILAN_LEGEND()}
           <div class="chart-box tall"><canvas id="c2"></canvas></div></div>
       </div>`;
     chart('c1', {
@@ -375,26 +437,7 @@ function renderAnalysis(stepId, c, root) {
       ] },
       options: { plugins: { tooltip: tipM }, datasets: { bar: { categoryPercentage: 0.7, barPercentage: 0.9 } } },
     });
-    // Bilan fonctionnel empilé : emplois stables + BFR (s'il est positif) + trésorerie vs ressources.
-    const emplois = [y.immoNettes, Math.max(m.bfr, 0), y.tresoActif, 0];
-    const ressources = [y.capitauxPropres, y.dettesFinancieres, Math.max(-m.bfr, 0), y.tresoPassif];
-    const ds = [
-      { label: 'Immobilisations / capitaux propres', data: [emplois[0], ressources[0]], color: '--s1' },
-      { label: 'BFR / dettes MLT', data: [emplois[1], ressources[1]], color: '--s2' },
-      { label: 'Trésorerie actif / BFR négatif', data: [emplois[2], ressources[2]], color: '--s3' },
-      { label: 'Découverts', data: [emplois[3], ressources[3]], color: '--s4' },
-    ];
-    chart('c2', {
-      type: 'bar',
-      data: { labels: ['Emplois', 'Ressources'], datasets: ds.map(d => ({ label: d.label, data: d.data, ...barStyle(css(d.color)), borderWidth: { top: 2 }, borderColor: css('--surface'), borderSkipped: 'bottom', borderRadius: 0, maxBarThickness: 90 })) },
-      options: {
-        plugins: { tooltip: { callbacks: { label: ctx => {
-          const names = ctx.dataIndex === 0 ? ['Immobilisations', 'BFR', 'Trésorerie actif', '–'] : ['Capitaux propres', 'Dettes MLT', 'BFR négatif (ressource)', 'Découverts'];
-          return ctx.raw ? ` ${names[ctx.datasetIndex]} : ${E.fmt(ctx.raw)}` : null;
-        } } } },
-        scales: { x: { stacked: true }, y: { stacked: true } },
-      },
-    });
+    bilanChart('c2', y, m);
   }
 
   if (stepId === 'rotation') {
@@ -435,21 +478,29 @@ function renderAnalysis(stepId, c, root) {
 
   if (stepId === 'endettement') {
     const r = c.request;
-    const isOverdraft = r.years <= 1;
-    const annuity = isOverdraft ? r.amount * r.rate : E.loanSchedule(r.amount, r.rate, r.years)[0].payment;
-    const dscr = m.caf / annuity;
+    const isShort = r.kind === 'ct';
+    const cost = requestCost(r);
+    // Service de la dette existante estimé : intérêts actuels + capital remboursé l'an dernier.
+    const existing = y.fraisFinanciers + Math.max(0, c.data[i - 1].dettesFinancieres - y.dettesFinancieres);
+    const total = existing + cost;
+    const dscr = m.caf / total;
+    const dscrStatus = dscr >= 1.3 ? 'good' : dscr >= 1 ? 'warn' : 'bad';
+    const after = m.caf > 0 ? (y.dettesFinancieres + (isShort ? 0 : r.amount)) / m.caf : -1;
     root.innerHTML = `
       <div class="tiles">
         ${tile('CAF ' + c.years[i], E.fmt(m.caf))}
         ${tile('Dette financière / CAF', m.caf > 0 ? E.fmt(m.capaRemb, 'ans') : 'CAF négative', statusChip(E.status('capaRemb', m.capaRemb)))}
+        ${isShort ? '' : tile('Dette / CAF après le prêt', m.caf > 0 ? E.fmt(after, 'ans') : 'CAF négative', statusChip(E.status('capaRemb', after)))}
         ${tile('Gearing', E.fmt(m.gearing, 'x'), statusChip(E.status('gearing', m.gearing)))}
         ${tile('EBE / frais financiers', E.fmt(m.couvFF, 'x'), statusChip(E.status('couvFF', m.couvFF)))}
-        ${tile(isOverdraft ? 'Intérêts annuels du découvert en plus' : 'Annuité du nouveau prêt', E.fmt(annuity), isOverdraft ? `à ${(r.rate * 100).toLocaleString('fr-FR')} % s’il est utilisé en entier` : `CAF / annuité = ${E.fmt(dscr, 'x')} ${statusChip(dscr >= 1.3 ? 'good' : dscr >= 1 ? 'warn' : 'bad')}`)}
+        ${isShort
+          ? tile('Intérêts du crédit demandé', E.fmt(cost), `${r.months} mois à ${(r.rate * 100).toLocaleString('fr-FR')} %, s’il est utilisé en entier. Soit ${E.fmt(cost / m.ebe, 'pct')} de l’EBE`)
+          : tile('Service total de la dette après le prêt', E.fmt(total), `Nouvelle annuité ${E.fmt(cost)} + dette existante ≈ ${E.fmt(existing)}. CAF / service = ${E.fmt(dscr, 'x')} ${statusChip(dscrStatus)}`)}
       </div>
       ${comment}
       <div class="grid grid-2">
-        <div class="card chart-card"><h3>CAF face ${isOverdraft ? 'au coût du découvert demandé' : 'à l’annuité du nouveau prêt'}</h3><div class="sub">La CAF doit couvrir confortablement la nouvelle charge (idéalement 1,3 fois ou plus).</div>
-          ${legend([['CAF', css('--s1')], [isOverdraft ? 'Intérêts du découvert supplémentaire' : 'Annuité du nouveau prêt', css('--s2')]])}
+        <div class="card chart-card"><h3>${isShort ? 'CAF face au coût du crédit demandé' : 'CAF face au service total de la dette'}</h3><div class="sub">${isShort ? 'Un crédit court terme se rembourse par les encaissements de l’activité. La CAF doit au moins en couvrir le coût.' : 'La CAF doit couvrir l’ancien et le nouveau prêt, idéalement 1,3 fois ou plus. Service existant estimé à partir des intérêts et du capital remboursé l’an dernier.'}</div>
+          ${legend([['CAF', css('--s1')], [isShort ? 'Intérêts du crédit demandé' : 'Service de la dette après le prêt', css('--s2')]])}
           <div class="chart-box"><canvas id="c1"></canvas></div></div>
         <div class="card chart-card"><h3>Capitaux propres et dettes</h3><div class="sub">Dettes financières MLT et découverts comparés aux fonds propres</div>
           ${legend([['Capitaux propres', css('--s1')], ['Dettes financières MLT', css('--s2')], ['Découverts', css('--s4')]])}
@@ -459,7 +510,7 @@ function renderAnalysis(stepId, c, root) {
       type: 'bar',
       data: { labels, datasets: [
         { type: 'bar', label: 'CAF', data: ms.map(x => x.caf), ...barStyle(css('--s1')) },
-        { type: 'line', label: isOverdraft ? 'Intérêts du découvert supplémentaire' : 'Annuité du nouveau prêt', data: labels.map(() => E.round(annuity)), ...lineStyle(css('--s2')), borderDash: [6, 4], pointRadius: 0 },
+        { type: 'line', label: isShort ? 'Intérêts du crédit demandé' : 'Service de la dette après le prêt', data: labels.map(() => E.round(isShort ? cost : total)), ...lineStyle(css('--s2')), borderDash: [6, 4], pointRadius: 0 },
       ] },
       options: { plugins: { tooltip: tipM } },
     });
@@ -838,12 +889,258 @@ function viewFiches() {
   });
 }
 
+// ---------- Cours ----------
+const coursProgress = () => (progress.cours ||= {});
+const lastYear = c => c.data[c.data.length - 1];
+const lastM = c => E.analyze(lastYear(c));
+
+function viewCoursIndex() {
+  const cp = coursProgress();
+  const families = [...new Set(Object.values(RATIOS).map(r => r.family))];
+  const chapterOf = key => CHAPTERS.find(ch => ch.ratios.includes(key));
+  app.innerHTML = `
+    <h1>Cours</h1>
+    <p class="muted">Huit chapitres courts pour comprendre chaque ratio : ce qu’il mesure, comment le calculer, comment l’interpréter et quels pièges éviter. Chaque notion est illustrée par les entreprises des cas pratiques, avec graphiques et quiz.</p>
+    <div class="grid grid-2">${CHAPTERS.map((ch, i) => {
+      const st = cp[ch.id];
+      return `<a class="card module-link" href="#/cours/${ch.id}">
+        <div class="small muted">Chapitre ${i + 1} · ${ch.duration}${ch.ratios.length ? ` · ${ch.ratios.length} ratios` : ''}</div>
+        <h3 style="margin-top:6px">${ch.title}</h3>
+        <p class="small muted">${ch.intro}</p>
+        ${st ? `<span class="status ${st.score === st.total ? 'good' : 'warn'}">Quiz : ${st.score} / ${st.total}</span>` : '<span class="badge">À lire</span>'}
+      </a>`;
+    }).join('')}</div>
+    <h2 style="margin-top:28px">Index des ratios</h2>
+    <p class="muted small">Cliquez sur un ratio pour ouvrir sa fiche détaillée dans le chapitre correspondant.</p>
+    <div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>Ratio</th><th>Famille</th><th>Formule</th><th>Repère favorable</th></tr></thead>
+      <tbody>${families.map(f => Object.entries(RATIOS).filter(([, r]) => r.family === f).map(([k, r]) => {
+        const ch = chapterOf(k);
+        const good = r.grille.find(g => g[2] === 'good');
+        return `<tr><td><a href="#/cours/${ch.id}/${k}">${r.name}</a></td><td>${f}</td><td class="small">${r.formula}</td><td class="small">${good ? good[0] : '–'}</td></tr>`;
+      }).join('')).join('')}</tbody>
+    </table></div></div>`;
+}
+
+function viewChapter(id, anchor) {
+  const idx = CHAPTERS.findIndex(ch => ch.id === id);
+  if (idx < 0) return viewCoursIndex();
+  const ch = CHAPTERS[idx];
+  const caseId = store.get('coursCase', CASES[0].id);
+  const c = CASES.find(x => x.id === caseId) || CASES[0];
+  const y = lastYear(c), m = E.analyze(y), yr = c.years[c.years.length - 1];
+  const prev = CHAPTERS[idx - 1], next = CHAPTERS[idx + 1];
+  app.innerHTML = `
+    <p class="small"><a href="#/cours">← Tous les chapitres</a></p>
+    <div class="eyebrow">Chapitre ${idx + 1} · ${ch.duration}</div>
+    <h1>${ch.title}</h1>
+    <p class="muted" style="max-width:70ch">${ch.intro}</p>
+    <div class="card" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <label for="exCase" class="small muted">Entreprise utilisée pour les exemples chiffrés :</label>
+      <select id="exCase" class="select">${CASES.map(x => `<option value="${x.id}" ${x.id === c.id ? 'selected' : ''}>${x.name} (${x.years[x.years.length - 1]})</option>`).join('')}</select>
+    </div>
+    ${ch.ratios.length ? `<div class="toc">${ch.ratios.map(k => `<a class="chip" href="#/cours/${ch.id}/${k}">${RATIOS[k].name}</a>`).join('')}</div>` : ''}
+    ${ch.blocks.map(b => `<section class="card lesson"><h2>${b.h}</h2>${b.html}</section>`).join('')}
+    <div id="visual"></div>
+    ${ch.ratios.map(k => ratioCard(k, c, y, m, yr)).join('')}
+    <section class="card"><h2>Quiz : testez votre interprétation</h2><div id="quiz"></div></section>
+    ${ch.practice.length ? `<div class="insight"><h4>Mettre en pratique</h4><div class="btn-row">${ch.practice.map(([h, l]) => `<a class="btn" href="${h}">${l} →</a>`).join('')}</div></div>` : ''}
+    <div class="btn-row" style="justify-content:space-between;margin-top:20px">
+      ${prev ? `<a class="btn" href="#/cours/${prev.id}">← ${prev.title}</a>` : '<span></span>'}
+      ${next ? `<a class="btn primary" href="#/cours/${next.id}">${next.title} →</a>` : '<a class="btn primary" href="#/cas">Passer aux cas pratiques →</a>'}
+    </div>`;
+  document.getElementById('exCase').onchange = ev => { store.set('coursCase', ev.target.value); destroyCharts(); viewChapter(id); };
+  renderVisual(ch.visual, c, y, m, yr);
+  ch.ratios.forEach(k => ratioChart(k, c));
+  renderQuiz(ch, document.getElementById('quiz'));
+  if (anchor) setTimeout(() => document.getElementById('ratio-' + anchor)?.scrollIntoView({ behavior: 'smooth' }), 50);
+}
+
+function ratioCard(k, c, y, m, yr) {
+  const r = RATIOS[k];
+  const v = m[k], t = E.THRESHOLDS[k];
+  const st = t ? E.status(k, v) : null;
+  return `<section class="card ratio" id="ratio-${k}">
+    <div class="ratio-head"><h2>${r.name}</h2><span class="badge">${r.family}</span></div>
+    <p>${r.measure}</p>
+    <span class="formula">${esc(r.formula)}</span>
+    <div class="grid grid-2" style="margin-top:12px">
+      <div>
+        <h4 class="mini">Exemple : ${c.name}, ${yr}</h4>
+        <span class="formula">${esc(r.calc(y, m)).replace(/\n/g, '<br>')}</span>
+        ${st ? `<p>${statusChip(st)} <span class="small muted">selon la grille ci-dessous</span></p>` : ''}
+        <h4 class="mini">Grille de lecture</h4>
+        <div class="table-wrap"><table><tbody>${r.grille.map(([range, txt, s]) => `<tr><td style="min-width:110px"><b>${range}</b></td><td>${statusChip(s, '')}</td><td class="small">${txt}</td></tr>`).join('')}</tbody></table></div>
+      </div>
+      <div>
+        <h4 class="mini">Comparaison des entreprises des cas pratiques</h4>
+        ${legend([['Entreprise sélectionnée', css('--s2')], ['Autres entreprises', css('--s1')], ...(t ? [['Seuil favorable', css('--good')], ['Seuil d’alerte', css('--bad')]] : [])])}
+        <div class="chart-box"><canvas id="rc-${k}"></canvas></div>
+        <h4 class="mini">Repères par secteur (ordres de grandeur)</h4>
+        <div class="table-wrap"><table><tbody>${r.secteurs.map(([sct, val]) => `<tr><td>${sct}</td><td class="r">${val}</td></tr>`).join('')}</tbody></table></div>
+      </div>
+    </div>
+    <div class="grid grid-2" style="margin-top:12px">
+      <div><h4 class="mini">Comment l’améliorer</h4><ul>${r.leviers.map(x => `<li>${x}</li>`).join('')}</ul></div>
+      <div><h4 class="mini">Pièges d’interprétation</h4><ul>${r.pieges.map(x => `<li>${x}</li>`).join('')}</ul></div>
+    </div>
+  </section>`;
+}
+
+function ratioChart(k, c) {
+  const t = E.THRESHOLDS[k], fmtKind = t ? t.fmt : 'x';
+  const scale = fmtKind === 'pct' ? 100 : 1;
+  const vals = CASES.map(x => { const v = lastM(x)[k]; return isFinite(v) ? v * scale : null; });
+  const datasets = [{
+    type: 'bar', label: RATIOS[k].name, data: vals, ...barStyle(null),
+    backgroundColor: CASES.map(x => x.id === c.id ? css('--s2') : css('--s1')),
+  }];
+  if (t) {
+    datasets.push({ type: 'line', label: 'Seuil favorable', data: CASES.map(() => t.good * scale), borderColor: css('--good'), borderDash: [5, 4], borderWidth: 2, pointRadius: 0 });
+    datasets.push({ type: 'line', label: 'Seuil d’alerte', data: CASES.map(() => t.bad * scale), borderColor: css('--bad'), borderDash: [5, 4], borderWidth: 2, pointRadius: 0 });
+  }
+  const show = v => fmtKind === 'pct' ? E.fmt(v / 100, 'pct') : E.fmt(v, fmtKind);
+  chart('rc-' + k, {
+    type: 'bar',
+    data: { labels: CASES.map(x => x.short), datasets },
+    options: {
+      plugins: { tooltip: { callbacks: { label: ctx => ctx.raw === null ? ' Non calculable' : ` ${ctx.dataset.label} : ${show(ctx.raw)}` } } },
+      scales: { x: { ticks: { autoSkip: false, maxRotation: 45, font: { size: 11 } } }, y: { ticks: { callback: v => fmtKind === 'pct' ? v + ' %' : v } } },
+    },
+  });
+}
+
+function renderVisual(kind, c, y, m, yr) {
+  const root = document.getElementById('visual');
+  if (!kind) return;
+  if (kind === 'bilan') {
+    root.innerHTML = `<div class="card chart-card"><h3>Le bilan fonctionnel de ${c.name} (${yr})</h3>
+      <div class="sub">Emplois à gauche, ressources à droite. Changez d’entreprise en haut de la page pour comparer.</div>
+      ${BILAN_LEGEND()}<div class="chart-box tall"><canvas id="v1"></canvas></div>
+      <p class="small">FR = ${E.fmt(m.fr)} · BFR = ${E.fmt(m.bfr)} · Trésorerie nette = FR − BFR = <b>${E.fmt(m.tn)}</b></p></div>`;
+    bilanChart('v1', y, m);
+  }
+  if (kind === 'sig') {
+    root.innerHTML = `<div class="card chart-card"><h3>La cascade des soldes : ${c.name} (${yr})</h3>
+      <div class="sub">Chaque barre grise est une charge retirée. En bleu, les soldes intermédiaires.</div>
+      ${legend([['Soldes', css('--s1')], ['Charges', css('--neutral-bar')], ['Produits', css('--s3')]])}
+      <div class="chart-box tall"><canvas id="v1"></canvas></div></div>`;
+    waterfall('v1', y, m);
+  }
+  if (kind === 'ftn') {
+    const ms = CASES.map(lastM);
+    root.innerHTML = `<div class="card chart-card"><h3>FR, BFR et trésorerie des six entreprises</h3>
+      <div class="sub">En jours de chiffre d’affaires, pour comparer des entreprises de tailles différentes</div>
+      ${legend([['Fonds de roulement', css('--s1')], ['BFR', css('--s2')], ['Trésorerie nette', css('--s3')]])}
+      <div class="chart-box tall"><canvas id="v1"></canvas></div></div>`;
+    const j = (v, x) => E.round(v / lastYear(x).ca * 360);
+    chart('v1', {
+      type: 'bar',
+      data: { labels: CASES.map(x => x.short), datasets: [
+        { label: 'Fonds de roulement', data: ms.map((mm, i) => j(mm.fr, CASES[i])), ...barStyle(css('--s1')) },
+        { label: 'BFR', data: ms.map((mm, i) => j(mm.bfr, CASES[i])), ...barStyle(css('--s2')) },
+        { label: 'Trésorerie nette', data: ms.map((mm, i) => j(mm.tn, CASES[i])), ...barStyle(css('--s3')) },
+      ] },
+      options: { plugins: { tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label} : ${Math.round(ctx.raw)} j de CA` } } }, scales: { y: { ticks: { callback: v => v + ' j' } } }, datasets: { bar: { categoryPercentage: 0.75, barPercentage: 0.9 } } },
+    });
+  }
+  if (kind === 'cycle') {
+    root.innerHTML = `<div class="card chart-card"><h3>Le cycle d’exploitation de ${c.name} (${yr})</h3>
+      <div class="sub">Jour 0 : la marchandise entre en stock. Elle est vendue après la rotation des stocks, puis encaissée après le délai clients. Le fournisseur, lui, est payé après le délai fournisseurs.</div>
+      ${legend([['Stock', css('--s2')], ['Crédit client', css('--s1')], ['Crédit fournisseur', css('--s3')], ['Période à financer', css('--s4')]])}
+      <div class="chart-box"><canvas id="v1"></canvas></div>
+      <p class="small">Cycle = ${E.fmt(m.dio, 'j')} + ${E.fmt(m.dso, 'j')} − ${E.fmt(m.dpo, 'j')} = <b>${E.fmt(m.cycle, 'j')}</b> ${m.cycle > 0 ? `pendant lesquels l’entreprise doit avancer l’argent.` : ': le fournisseur est payé après l’encaissement du client, l’exploitation génère de la trésorerie.'}</p></div>`;
+    const end = m.dio + m.dso;
+    const rows = [['Stock', [0, m.dio], '--s2'], ['Crédit client', [m.dio, end], '--s1'], ['Crédit fournisseur', [0, m.dpo], '--s3'], ['Période à financer', m.cycle > 0 ? [m.dpo, end] : [end, end], '--s4']];
+    chart('v1', {
+      type: 'bar',
+      data: { labels: rows.map(r => r[0]), datasets: [{ label: 'Jours', data: rows.map(r => r[1].map(v => E.round(v))), ...barStyle(null), backgroundColor: rows.map(r => css(r[2])), maxBarThickness: 28 }] },
+      options: {
+        indexAxis: 'y', interaction: { mode: 'nearest', intersect: true },
+        plugins: { tooltip: { callbacks: { label: ctx => ` du jour ${Math.round(ctx.raw[0])} au jour ${Math.round(ctx.raw[1])} (${Math.round(ctx.raw[1] - ctx.raw[0])} j)` } } },
+        scales: { x: { grid: { color: css('--grid') }, ticks: { callback: v => 'J' + v } }, y: { grid: { display: false } } },
+      },
+    });
+  }
+  if (kind === 'levier') {
+    root.innerHTML = `<div class="card"><h3>Simulateur d’effet de levier</h3>
+      <div class="layout-sim" style="margin-top:12px"><div>
+        ${slider('lvRoce', 'Rentabilité économique (ROCE)', 0, 30, 1, 15, ' %')}
+        ${slider('lvRate', 'Coût de la dette (après impôt)', 2, 20, 0.5, 8, ' %')}
+        ${slider('lvDebt', 'Dettes / capitaux propres', 0, 4, 0.1, 1, ' x')}
+      </div><div>
+        <div class="tiles" id="lvTiles"></div>
+        ${legend([['ROE selon le niveau d’endettement', css('--s1')], ['ROCE (sans dette)', css('--muted')]])}
+        <div class="chart-box"><canvas id="v1"></canvas></div>
+      </div></div>
+      <div class="insight" id="lvMsg" style="margin-top:12px"></div></div>`;
+    const xs = Array.from({ length: 21 }, (_, i) => E.round(i * 0.2, 1));
+    const ch = chart('v1', {
+      type: 'line',
+      data: { labels: xs.map(x => x.toLocaleString('fr-FR')), datasets: [
+        { label: 'ROE', data: [], ...lineStyle(css('--s1')), pointRadius: 0 },
+        { label: 'ROCE', data: [], borderColor: css('--muted'), borderDash: [5, 4], borderWidth: 2, pointRadius: 0 },
+      ] },
+      options: {
+        plugins: { tooltip: { callbacks: { title: items => `Dettes / CP = ${items[0].label}`, label: ctx => ` ${ctx.dataset.label} : ${ctx.raw.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %` } } },
+        scales: { x: { title: { display: true, text: 'Dettes / capitaux propres', color: css('--muted') }, ticks: { maxTicksLimit: 9 } }, y: { ticks: { callback: v => v + ' %' } } },
+        animation: { duration: 200 },
+      },
+    });
+    bindSliders(root, () => {
+      const roce = val('lvRoce'), rate = val('lvRate'), d = val('lvDebt');
+      const roe = roce + (roce - rate) * d;
+      if (ch) { ch.data.datasets[0].data = xs.map(x => roce + (roce - rate) * x); ch.data.datasets[1].data = xs.map(() => roce); ch.update(); }
+      document.getElementById('lvTiles').innerHTML = tile('ROE obtenu', E.fmt(roe / 100, 'pct')) + tile('Effet de levier', (roe - roce >= 0 ? '+' : '') + E.fmt((roe - roce) / 100, 'pct'), roce >= rate ? statusChip('good', 'Positif') : statusChip('bad', 'Négatif : effet massue'));
+      document.getElementById('lvMsg').innerHTML = `<h4>Lecture</h4>ROE = ${roce} % + (${roce} % − ${rate.toLocaleString('fr-FR')} %) × ${d.toLocaleString('fr-FR')} = <b>${E.fmt(roe / 100, 'pct')}</b>. ${roce > rate ? 'Le ROCE dépasse le coût de la dette : chaque franc emprunté rapporte plus qu’il ne coûte, l’endettement augmente la rentabilité des associés… mais aussi leur risque si l’activité baisse.' : roce === rate ? 'ROCE et coût de la dette sont égaux : l’endettement ne change pas la rentabilité, il ajoute seulement du risque.' : 'Le ROCE est inférieur au coût de la dette : plus l’entreprise s’endette, plus la rentabilité des associés chute. C’est l’effet massue, typique d’une entreprise en difficulté qui continue d’emprunter.'}`;
+    });
+  }
+  if (kind === 'radar') {
+    const keys = ['margeEbe', 'bfrJours', 'liquiditeGen', 'dso', 'dio', 'autonomie', 'gearing', 'capaRemb', 'couvFF'];
+    root.innerHTML = `<div class="card"><h3>Vue d’ensemble : les six entreprises, ratio par ratio (dernier exercice)</h3>
+      <p class="small muted">Lisez chaque ligne comme une histoire : où se concentrent les alertes ? Sont-elles cohérentes entre elles ?</p>
+      <div class="table-wrap"><table class="matrix"><thead><tr><th>Entreprise</th>${keys.map(k => `<th>${E.THRESHOLDS[k].label.replace(/ \(.*\)/, '')}</th>`).join('')}</tr></thead>
+      <tbody>${CASES.map(x => { const mm = lastM(x); return `<tr><td><a href="#/cas/${x.id}">${x.short}</a></td>${keys.map(k => `<td>${statusChip(E.status(k, mm[k]), E.fmt(mm[k], E.THRESHOLDS[k].fmt))}</td>`).join('')}</tr>`; }).join('')}</tbody></table></div></div>`;
+  }
+}
+
+function renderQuiz(ch, root) {
+  const answers = {};
+  root.innerHTML = ch.quiz.map((q, i) => `
+    <div class="quiz-q" data-i="${i}">
+      <p><b>${i + 1}. ${q.q}</b></p>
+      <div class="quiz-opts">${q.options.map((o, j) => `<button class="choice" data-j="${j}">${o}</button>`).join('')}</div>
+      <div class="quiz-fb"></div>
+    </div>`).join('') + '<div id="quizScore"></div>';
+  root.querySelectorAll('.quiz-q').forEach(el => {
+    const i = +el.dataset.i, q = ch.quiz[i];
+    el.querySelectorAll('.choice').forEach(btn => btn.onclick = () => {
+      if (answers[i] !== undefined) return;
+      const j = +btn.dataset.j;
+      answers[i] = j === q.answer;
+      el.querySelectorAll('.choice').forEach(b => {
+        b.disabled = true;
+        if (+b.dataset.j === q.answer) b.classList.add('right');
+        else if (b === btn) b.classList.add('wrong');
+      });
+      el.querySelector('.quiz-fb').innerHTML = `<div class="feedback ${answers[i] ? 'ok' : 'ko'}"><b>${answers[i] ? 'Bonne réponse.' : 'Pas tout à fait.'}</b> ${q.explain}</div>`;
+      if (Object.keys(answers).length === ch.quiz.length) {
+        const score = Object.values(answers).filter(Boolean).length;
+        coursProgress()[ch.id] = { score, total: ch.quiz.length };
+        saveProgress();
+        document.getElementById('quizScore').innerHTML = `<div class="feedback ${score === ch.quiz.length ? 'ok' : 'info'}" style="margin-top:12px"><b>Score : ${score} / ${ch.quiz.length}.</b> ${score === ch.quiz.length ? 'Parfait, passez au chapitre suivant.' : 'Relisez les fiches concernées puis retentez le quiz (rechargez la page).'}</div>`;
+      }
+    });
+  });
+}
+
 // ---------- Routage ----------
 function render() {
   destroyCharts();
-  const [view, arg] = location.hash.replace(/^#\/?/, '').split('/');
+  const [view, arg, sub] = location.hash.replace(/^#\/?/, '').split('/');
   document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.view === view));
   switch (view) {
+    case 'cours': arg ? viewChapter(arg, sub) : viewCoursIndex(); break;
     case 'cas': arg ? viewCase(arg) : viewCases(); break;
     case 'labo': viewLabo(arg); break;
     case 'exercices': viewExercises(); break;

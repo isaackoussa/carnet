@@ -263,3 +263,22 @@ legend { font-weight: 700; margin-bottom: 8px; }
 .progress-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 8px; }
 .progress-bar > div { height: 100%; background: var(--accent); border-radius: 3px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Cours */
+.lesson h2 { font-size: 1.2rem; }
+.lesson ul, .lesson ol, .ratio ul { padding-left: 20px; margin: 4px 0 8px; }
+.lesson li, .ratio li { margin-bottom: 4px; }
+.ratio-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ratio-head h2 { margin: 0; font-size: 1.25rem; }
+.ratio { scroll-margin-top: 80px; }
+h4.mini { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 14px 0 6px; }
+.select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--axis); background: var(--page); color: var(--ink); max-width: 100%; }
+.quiz-q { padding: 12px 0; border-bottom: 1px solid var(--grid); }
+.quiz-q:last-of-type { border-bottom: 0; }
+.quiz-opts { display: grid; gap: 8px; }
+.quiz-opts .choice { padding: 10px 14px; }
+.choice:disabled { cursor: default; }
+.choice.right { border-color: var(--good); box-shadow: 0 0 0 2px var(--good) inset; }
+.choice.wrong { border-color: var(--bad); box-shadow: 0 0 0 2px var(--bad) inset; }
+table.matrix th { white-space: normal; min-width: 90px; }
+table.matrix td { white-space: nowrap; }

@@ -38,7 +38,7 @@ const FICHES = [
     usage: 'Comprendre pourquoi le BFR bouge et quel levier actionner.',
     formula: 'Délai clients (DSO) = créances clients / CA × 360\nRotation des stocks (DIO) = stocks / achats consommés × 360\nDélai fournisseurs (DPO) = fournisseurs / (achats + services extérieurs) × 360',
     lecture: 'Plus le DSO et le DIO sont longs et le DPO court, plus le BFR est lourd. Chaque jour de délai client en plus immobilise environ CA / 360 de trésorerie.',
-    piege: 'Calculer sur le CA hors taxes alors que les créances sont TTC : en pratique, les banques corrigent souvent de la TVA (18 % en zone UEMOA). Ici on reste en HT pour simplifier.',
+    piege: 'Calculer sur le CA hors taxes alors que les créances sont TTC : en pratique, les banques corrigent souvent de la TVA (18 % en Côte d\u2019Ivoire). Ici on reste en HT pour simplifier.',
     exemple: 'TransExpress : 1 150 M de CA / 360 = 3,2 M par jour. Réduire le délai clients de 147 à 120 jours libérerait environ 86 M de trésorerie.',
   },
   {
