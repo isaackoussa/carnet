@@ -14,8 +14,111 @@ const store = {
   },
 };
 const progress = store.get('progress', { cases: {}, exo: { done: 0, correct: 0, streak: 0, best: 0 } });
-const saveProgress = () => store.set('progress', progress);
+const saveProgress = () => { store.set('progress', progress); schedulePush(); };
 const caseProgress = id => (progress.cases[id] ||= { answered: {}, decision: null, step: 0 });
+
+// ---------- Compte (e-mail vérifié par code) et synchronisation de la progression ----------
+const API = '/.netlify/functions/ac-account';
+let account = store.get('account', null); // { email, token }
+let syncState = { status: account ? 'sync' : 'idle' };
+let pushTimer = null;
+
+async function api(action, { method = 'POST', body, auth = false } = {}) {
+  let res;
+  try {
+    res = await fetch(`${API}?action=${action}`, {
+      method,
+      headers: { 'content-type': 'application/json', ...(auth && account ? { authorization: 'Bearer ' + account.token } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new Error('Connexion impossible. Vérifiez votre accès à Internet.');
+  }
+  let data = {};
+  try { data = await res.json(); } catch { /* réponse non JSON */ }
+  if (res.status === 401 && auth) signOutLocal('Votre session a expiré. Reconnectez-vous pour synchroniser votre progression.');
+  if (!res.ok) throw new Error(data.error || (res.status === 404 ? 'Le service de compte n’est disponible qu’une fois le site déployé sur Netlify.' : `Erreur ${res.status}.`));
+  return data;
+}
+
+// Fusionne deux progressions (appareil et serveur) sans rien perdre : on garde le meilleur de chaque côté.
+function mergeProgress(a, b) {
+  const out = { cases: {}, exo: {}, cours: {}, tests: {} };
+  for (const id of new Set([...Object.keys(a.cases || {}), ...Object.keys(b.cases || {})])) {
+    const x = a.cases?.[id] || {}, y = b.cases?.[id] || {};
+    out.cases[id] = { answered: { ...(y.answered || {}), ...(x.answered || {}) }, decision: x.decision || y.decision || null, step: Math.max(x.step || 0, y.step || 0) };
+  }
+  const ea = a.exo || {}, eb = b.exo || {};
+  const main = (ea.done || 0) >= (eb.done || 0) ? ea : eb;
+  out.exo = { done: main.done || 0, correct: main.correct || 0, streak: main.streak || 0, best: Math.max(ea.best || 0, eb.best || 0) };
+  for (const id of new Set([...Object.keys(a.cours || {}), ...Object.keys(b.cours || {})])) {
+    const x = a.cours?.[id], y = b.cours?.[id];
+    out.cours[id] = !x ? y : !y ? x : x.score >= y.score ? x : y;
+  }
+  const seen = new Set();
+  out.tests.history = [...(a.tests?.history || []), ...(b.tests?.history || [])]
+    .filter(h => !seen.has(h.date) && seen.add(h.date))
+    .sort((p, q) => p.date - q.date).slice(-20);
+  out.tests.best = Math.max(a.tests?.best || 0, b.tests?.best || 0);
+  return out;
+}
+function replaceProgress(p) {
+  for (const k of Object.keys(progress)) delete progress[k];
+  Object.assign(progress, p);
+  store.set('progress', progress);
+}
+
+async function pushNow() {
+  if (!account) return;
+  const r = await api('progress', { method: 'PUT', body: { progress }, auth: true });
+  syncState = { status: 'ok', at: r.updatedAt };
+  updateAccountUI();
+}
+function schedulePush() {
+  if (!account) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => pushNow().catch(e => { syncState = { status: 'error', error: e.message }; updateAccountUI(); }), 1500);
+}
+// Récupère la progression du compte, la fusionne avec celle de l'appareil, puis renvoie le résultat.
+async function syncNow() {
+  if (!account) return;
+  syncState = { status: 'sync' };
+  updateAccountUI();
+  try {
+    const before = JSON.stringify(progress);
+    const r = await api('progress', { method: 'GET', auth: true });
+    if (r.progress) replaceProgress(mergeProgress(progress, r.progress));
+    await pushNow();
+    if (JSON.stringify(progress) !== before && !location.hash.startsWith('#/test')) render();
+  } catch (e) {
+    if (account) { syncState = { status: 'error', error: e.message }; updateAccountUI(); }
+  }
+}
+function signOutLocal(message) {
+  account = null;
+  store.set('account', null);
+  syncState = { status: 'idle', message };
+  updateAccountUI();
+}
+function syncText() {
+  if (!account) return syncState.message || '';
+  switch (syncState.status) {
+    case 'sync': return 'Synchronisation en cours…';
+    case 'ok': return `Progression sauvegardée sur votre compte${syncState.at ? ' à ' + new Date(syncState.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''}.`;
+    case 'error': return 'Synchronisation impossible : ' + syncState.error;
+    default: return '';
+  }
+}
+function updateAccountUI() {
+  const btn = document.getElementById('accountBtn');
+  if (btn) {
+    btn.textContent = account ? account.email : 'Se connecter';
+    btn.title = account ? 'Mon compte : ' + syncText() : 'Se connecter pour sauvegarder sa progression';
+    btn.classList.toggle('on', !!account);
+  }
+  const el = document.getElementById('syncStatus');
+  if (el) el.textContent = syncText();
+}
 
 // ---------- Thème ----------
 (function initTheme() {
@@ -214,8 +317,9 @@ function viewHome() {
       ${tile('Chapitres de cours validés', `${Object.keys(progress.cours || {}).length} / ${CHAPTERS.length}`, 'quiz terminé')}
       ${tile('Cas pratiques terminés', `${done} / ${CASES.length}`)}
       ${tile('Exercices réussis', `${e.correct} / ${e.done}`, e.done ? `${Math.round(e.correct / e.done * 100)} % de réussite` : 'Aucun exercice pour l’instant')}
-      ${tile('Meilleure série', e.best, 'bonnes réponses d’affilée')}
+      ${tile('Mini-test final', progress.tests?.best ? progress.tests.best + ' %' : '–', 'meilleur score')}
     </div>
+    ${account ? '' : '<div class="insight"><h4>Sauvegardez votre progression</h4><a href="#/compte">Connectez-vous avec votre e-mail</a> pour retrouver vos cours, cas et scores sur tous vos appareils.</div>'}
     <div class="grid grid-2">
       ${[
         ['#/cours', 'Cours', '8 chapitres et 20 ratios expliqués : formule, exemple chiffré, grille de lecture, repères sectoriels, pièges et quiz d\u2019interprétation.'],
@@ -901,6 +1005,7 @@ function viewCoursIndex() {
   app.innerHTML = `
     <h1>Cours</h1>
     <p class="muted">Huit chapitres courts pour comprendre chaque ratio : ce qu’il mesure, comment le calculer, comment l’interpréter et quels pièges éviter. Chaque notion est illustrée par les entreprises des cas pratiques, avec graphiques et quiz.</p>
+    <div class="insight" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap"><div><h4>Mini-test final</h4>${TEST_SIZE} questions tirées au hasard dans tous les chapitres${progress.tests?.best ? ` · meilleur score : ${progress.tests.best} %` : ''}.</div><a class="btn primary" href="#/test">Faire le mini-test →</a></div>
     <div class="grid grid-2">${CHAPTERS.map((ch, i) => {
       const st = cp[ch.id];
       return `<a class="card module-link" href="#/cours/${ch.id}">
@@ -947,7 +1052,7 @@ function viewChapter(id, anchor) {
     ${ch.practice.length ? `<div class="insight"><h4>Mettre en pratique</h4><div class="btn-row">${ch.practice.map(([h, l]) => `<a class="btn" href="${h}">${l} →</a>`).join('')}</div></div>` : ''}
     <div class="btn-row" style="justify-content:space-between;margin-top:20px">
       ${prev ? `<a class="btn" href="#/cours/${prev.id}">← ${prev.title}</a>` : '<span></span>'}
-      ${next ? `<a class="btn primary" href="#/cours/${next.id}">${next.title} →</a>` : '<a class="btn primary" href="#/cas">Passer aux cas pratiques →</a>'}
+      ${next ? `<a class="btn primary" href="#/cours/${next.id}">${next.title} →</a>` : '<a class="btn primary" href="#/test">Faire le mini-test final →</a>'}
     </div>`;
   document.getElementById('exCase').onchange = ev => { store.set('coursCase', ev.target.value); destroyCharts(); viewChapter(id); };
   renderVisual(ch.visual, c, y, m, yr);
@@ -1134,13 +1239,215 @@ function renderQuiz(ch, root) {
   });
 }
 
+// ---------- Mon compte ----------
+let pendingEmail = null;
+let resendAt = 0;
+function viewCompte(notice) {
+  if (account) {
+    const done = CASES.filter(c => progress.cases[c.id]?.decision).length;
+    app.innerHTML = `
+      <h1>Mon compte</h1>
+      <div class="card auth-card">
+        <div class="small muted">Connecté avec</div>
+        <p style="font-size:1.15rem;font-weight:600;margin-top:2px">${esc(account.email)}</p>
+        <p id="syncStatus" class="sync-note">${esc(syncText())}</p>
+        <div class="tiles" style="margin-top:12px">
+          ${tile('Chapitres validés', `${Object.keys(progress.cours || {}).length} / ${CHAPTERS.length}`)}
+          ${tile('Cas terminés', `${done} / ${CASES.length}`)}
+          ${tile('Mini-test', progress.tests?.best ? progress.tests.best + ' %' : '–', 'meilleur score')}
+        </div>
+        <div class="btn-row"><button class="btn primary" id="syncBtn">Synchroniser maintenant</button><button class="btn" id="logoutBtn">Se déconnecter</button></div>
+        <p class="small muted" style="margin-top:12px">Votre progression est enregistrée automatiquement sur votre compte à chaque action. Connectez-vous avec la même adresse sur un autre appareil pour la retrouver.</p>
+      </div>`;
+    document.getElementById('syncBtn').onclick = () => syncNow();
+    document.getElementById('logoutBtn').onclick = async () => {
+      try { await api('logout', { auth: true }); } catch { /* session déjà invalide : on déconnecte quand même */ }
+      signOutLocal('Vous êtes déconnecté. Votre progression reste disponible sur cet appareil.');
+      viewCompte();
+    };
+    return;
+  }
+  const step = pendingEmail ? 'code' : 'email';
+  app.innerHTML = `
+    <h1>Mon compte</h1>
+    <p class="muted" style="max-width:62ch">Connectez-vous avec votre adresse e-mail pour sauvegarder votre progression (cours, cas pratiques, exercices, mini-test) et la retrouver sur tous vos appareils. Pas de mot de passe : vous recevez un code à 6 chiffres par e-mail.</p>
+    ${notice || syncState.message ? `<div class="feedback info auth-card" style="margin-bottom:16px">${esc(notice || syncState.message)}</div>` : ''}
+    <form class="card auth-card" id="authForm" novalidate>
+      ${step === 'email' ? `
+        <label for="authEmail"><b>Adresse e-mail</b></label>
+        <input id="authEmail" type="email" autocomplete="email" inputmode="email" placeholder="vous@exemple.com" required>
+        <div class="btn-row"><button class="btn primary" type="submit">Recevoir le code</button></div>` : `
+        <p>Un code a été envoyé à <b>${esc(pendingEmail)}</b>. Il est valable 10 minutes. Pensez à vérifier vos courriers indésirables.</p>
+        <label for="authCode"><b>Code de vérification</b></label>
+        <input id="authCode" class="code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required>
+        <div class="btn-row"><button class="btn primary" type="submit">Valider</button><button class="btn ghost" type="button" id="resendBtn">Renvoyer le code</button><button class="btn ghost" type="button" id="changeBtn">Changer d’adresse</button></div>`}
+      <div id="authMsg"></div>
+    </form>`;
+  const msg = (kind, text) => { document.getElementById('authMsg').innerHTML = `<div class="feedback ${kind}">${esc(text)}</div>`; };
+  const form = document.getElementById('authForm');
+  const busy = on => form.querySelectorAll('button').forEach(b => { b.disabled = on; });
+  const send = async email => {
+    busy(true);
+    try {
+      await api('request', { body: { email } });
+      pendingEmail = email.trim().toLowerCase();
+      resendAt = Date.now() + 60000;
+      syncState.message = null;
+      viewCompte();
+    } catch (e) { busy(false); msg('ko', e.message); }
+  };
+  if (step === 'email') {
+    const input = document.getElementById('authEmail');
+    input.focus();
+    form.onsubmit = ev => {
+      ev.preventDefault();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(input.value.trim())) return msg('ko', 'Adresse e-mail invalide.');
+      send(input.value.trim());
+    };
+    return;
+  }
+  const codeInput = document.getElementById('authCode');
+  codeInput.focus();
+  codeInput.oninput = () => { codeInput.value = codeInput.value.replace(/\D/g, '').slice(0, 6); };
+  form.onsubmit = async ev => {
+    ev.preventDefault();
+    if (codeInput.value.length !== 6) return msg('ko', 'Le code contient 6 chiffres.');
+    busy(true);
+    try {
+      const r = await api('verify', { body: { email: pendingEmail, code: codeInput.value } });
+      account = { email: r.email, token: r.token };
+      store.set('account', account);
+      pendingEmail = null;
+      updateAccountUI();
+      viewCompte();
+      syncNow();
+    } catch (e) { busy(false); msg('ko', e.message); }
+  };
+  document.getElementById('resendBtn').onclick = () => {
+    const wait = Math.ceil((resendAt - Date.now()) / 1000);
+    if (wait > 0) return msg('info', `Vous pourrez demander un nouveau code dans ${wait} s.`);
+    send(pendingEmail);
+  };
+  document.getElementById('changeBtn').onclick = () => { pendingEmail = null; viewCompte(); };
+}
+
+// ---------- Mini-test final ----------
+const TEST_SIZE = 10;
+let testRun = null;
+const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const chapterTitle = id => CHAPTERS.find(ch => ch.id === id)?.title || id;
+
+function startTest() {
+  const pool = [...CHAPTERS.flatMap(ch => ch.quiz.map(q => ({ ...q, ch: ch.id }))), ...EXTRA_QUIZ];
+  const qs = shuffle(pool).slice(0, TEST_SIZE).map(q => {
+    const order = shuffle(q.options.map((_, i) => i));
+    return { ...q, options: order.map(i => q.options[i]), answer: order.indexOf(q.answer) };
+  });
+  testRun = { qs, i: 0, results: [] };
+  viewTest();
+}
+
+function viewTest() {
+  const t = progress.tests || {};
+  if (!testRun) {
+    const hist = t.history || [];
+    app.innerHTML = `
+      <p class="small"><a href="#/cours">← Cours</a></p>
+      <h1>Mini-test final</h1>
+      <p class="muted" style="max-width:62ch">${TEST_SIZE} questions tirées au hasard dans tous les chapitres : calculs rapides et interprétation de ratios. À la fin, vous voyez votre score par chapitre et ce qu’il faut revoir. Chaque tentative est différente.</p>
+      <div class="tiles">
+        ${tile('Meilleur score', t.best ? t.best + ' %' : '–')}
+        ${tile('Tentatives', hist.length)}
+        ${tile('Dernier score', hist.length ? `${hist[hist.length - 1].score} / ${hist[hist.length - 1].total}` : '–')}
+      </div>
+      <div class="btn-row" style="margin-bottom:16px"><button class="btn primary" id="startTest">Commencer le test →</button></div>
+      ${hist.length >= 2 ? `<div class="card chart-card"><h3>Vos scores au fil des tentatives</h3><div class="sub">En % de bonnes réponses</div><div class="chart-box"><canvas id="th"></canvas></div></div>` : ''}
+      ${account ? '' : '<p class="small muted"><a href="#/compte">Connectez-vous</a> pour conserver vos scores sur tous vos appareils.</p>'}`;
+    document.getElementById('startTest').onclick = startTest;
+    if (hist.length >= 2) chart('th', {
+      type: 'line',
+      data: { labels: hist.map((h, i) => `#${i + 1}`), datasets: [{ label: 'Score', data: hist.map(h => Math.round(h.score / h.total * 100)), ...lineStyle(css('--s1')) }] },
+      options: { plugins: { tooltip: { callbacks: { title: items => new Date(hist[items[0].dataIndex].date).toLocaleDateString('fr-FR'), label: ctx => ` ${ctx.raw} %` } } }, scales: { y: { min: 0, max: 100, ticks: { callback: v => v + ' %' } } } },
+    });
+    return;
+  }
+  const { qs, i } = testRun;
+  if (i >= qs.length) return testResults();
+  const q = qs[i];
+  app.innerHTML = `
+    <div class="card test-card">
+      <div class="test-top"><span>Question ${i + 1} / ${qs.length}</span><span class="badge">${chapterTitle(q.ch)}</span></div>
+      <div class="progress-bar"><div style="width:${i / qs.length * 100}%"></div></div>
+      <h2 style="margin-top:16px;font-size:1.2rem">${q.q}</h2>
+      <div class="quiz-opts">${q.options.map((o, j) => `<button class="choice" data-j="${j}">${o}</button>`).join('')}</div>
+      <div id="tfb"></div>
+    </div>`;
+  app.querySelectorAll('.choice').forEach(btn => btn.onclick = () => {
+    const ok = +btn.dataset.j === q.answer;
+    testRun.results.push({ ch: q.ch, ok });
+    app.querySelectorAll('.choice').forEach(b => {
+      b.disabled = true;
+      if (+b.dataset.j === q.answer) b.classList.add('right');
+      else if (b === btn) b.classList.add('wrong');
+    });
+    const last = i + 1 >= qs.length;
+    document.getElementById('tfb').innerHTML = `<div class="feedback ${ok ? 'ok' : 'ko'}"><b>${ok ? 'Bonne réponse.' : 'Pas tout à fait.'}</b> ${q.explain}</div>
+      <div class="btn-row" style="margin-top:12px"><button class="btn primary" id="nextQ">${last ? 'Voir mon résultat' : 'Question suivante'} →</button></div>`;
+    document.getElementById('nextQ').onclick = () => { testRun.i++; viewTest(); window.scrollTo(0, 0); };
+    document.getElementById('nextQ').focus();
+  });
+}
+
+function testResults() {
+  const { results } = testRun;
+  const score = results.filter(r => r.ok).length, total = results.length, pct = Math.round(score / total * 100);
+  if (!testRun.saved) {
+    testRun.saved = true;
+    const t = (progress.tests ||= {});
+    t.history = [...(t.history || []), { date: Date.now(), score, total }].slice(-20);
+    t.best = Math.max(t.best || 0, pct);
+    saveProgress();
+  }
+  const byCh = {};
+  results.forEach(r => { (byCh[r.ch] ||= { ok: 0, n: 0 }); byCh[r.ch].n++; if (r.ok) byCh[r.ch].ok++; });
+  const chs = CHAPTERS.filter(ch => byCh[ch.id]);
+  const toReview = chs.filter(ch => byCh[ch.id].ok < byCh[ch.id].n);
+  const level = pct >= 80 ? ['good', 'Excellent : vous maîtrisez l’analyse des ratios.'] : pct >= 50 ? ['warn', 'Bonne base. Revoyez les chapitres ci-dessous pour consolider.'] : ['bad', 'Reprenez les chapitres indiqués, puis retentez le test.'];
+  app.innerHTML = `
+    <p class="small"><a href="#/cours">← Cours</a></p>
+    <h1>Résultat du mini-test</h1>
+    <div class="tiles">
+      ${tile('Score', `${score} / ${total}`, statusChip(level[0], pct + ' %'))}
+      ${tile('Meilleur score', progress.tests.best + ' %')}
+    </div>
+    <div class="insight"><h4>Bilan</h4>${level[1]}</div>
+    <div class="card chart-card"><h3>Résultat par chapitre</h3><div class="sub">Part de bonnes réponses (nombre de questions entre parenthèses)</div>
+      <div class="chart-box" style="height:${60 + chs.length * 38}px"><canvas id="tr"></canvas></div></div>
+    ${toReview.length ? `<div class="card"><h3>À revoir</h3><div class="btn-row">${toReview.map(ch => `<a class="btn" href="#/cours/${ch.id}">${ch.title} →</a>`).join('')}</div></div>` : ''}
+    <div class="btn-row"><button class="btn primary" id="again">Refaire un test</button><a class="btn" href="#/cas">Passer aux cas pratiques</a></div>`;
+  chart('tr', {
+    type: 'bar',
+    data: { labels: chs.map(ch => `${ch.title} (${byCh[ch.id].n})`), datasets: [{ label: 'Bonnes réponses', data: chs.map(ch => Math.round(byCh[ch.id].ok / byCh[ch.id].n * 100)), ...barStyle(css('--s1')), maxBarThickness: 22 }] },
+    options: {
+      indexAxis: 'y', interaction: { mode: 'nearest', intersect: true },
+      plugins: { tooltip: { callbacks: { label: ctx => ` ${byCh[chs[ctx.dataIndex].id].ok} / ${byCh[chs[ctx.dataIndex].id].n} bonnes réponses` } } },
+      scales: { x: { min: 0, max: 100, grid: { color: css('--grid') }, ticks: { callback: v => v + ' %' } }, y: { grid: { display: false } } },
+    },
+  });
+  document.getElementById('again').onclick = startTest;
+}
+
 // ---------- Routage ----------
 function render() {
   destroyCharts();
   const [view, arg, sub] = location.hash.replace(/^#\/?/, '').split('/');
-  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.view === view));
+  const navView = view === 'test' ? 'cours' : view;
+  document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('active', a.dataset.view === navView));
+  updateAccountUI();
   switch (view) {
     case 'cours': arg ? viewChapter(arg, sub) : viewCoursIndex(); break;
+    case 'test': if (testRun && testRun.i >= testRun.qs.length) testRun = null; viewTest(); break;
+    case 'compte': viewCompte(); break;
     case 'cas': arg ? viewCase(arg) : viewCases(); break;
     case 'labo': viewLabo(arg); break;
     case 'exercices': viewExercises(); break;
@@ -1151,3 +1458,4 @@ function render() {
 }
 window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
 render();
+if (account) syncNow();

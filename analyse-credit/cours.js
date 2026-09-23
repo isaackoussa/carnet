@@ -489,3 +489,17 @@ const CHAPTERS = [
     practice: [['#/dossier', 'Analyser un vrai dossier'], ['#/cas', 'Refaire tous les cas pratiques']],
   },
 ];
+
+// Questions supplémentaires (calcul et lecture) réservées au mini-test final.
+const EXTRA_QUIZ = [
+  { ch: 'sig', q: 'CA 800, achats consommés 450, services extérieurs 90. La valeur ajoutée est de…', options: ['260', '350', '710'], answer: 0, explain: 'VA = 800 − 450 − 90 = 260.' },
+  { ch: 'sig', q: 'Résultat net 40, dotations 25, plus-value de cession 10. La CAF est de…', options: ['55', '65', '75'], answer: 0, explain: 'CAF = 40 + 25 − 10 = 55 : la plus-value ne se reproduira pas, on la retire.' },
+  { ch: 'rentabilite', q: 'EBE de 60 M pour un CA de 1 000 M. La marge d’EBE est de…', options: ['6 %', '16,7 %', '60 %'], answer: 0, explain: '60 / 1 000 = 6 %.' },
+  { ch: 'equilibre', q: 'Capitaux propres 300, dettes MLT 200, immobilisations 350, BFR 220. La trésorerie nette est de…', options: ['–70', '+70', '+370'], answer: 0, explain: 'FR = 300 + 200 − 350 = 150 ; TN = 150 − 220 = –70.' },
+  { ch: 'equilibre', q: 'Une liquidité générale de 0,85 signifie que…', options: ['le fonds de roulement est négatif', 'le BFR est négatif', 'la trésorerie est forcément positive'], answer: 0, explain: 'Les actifs à court terme sont inférieurs aux dettes à court terme : une partie des immobilisations est financée à court terme, le FR est négatif.' },
+  { ch: 'rotation', q: 'CA 720 M, créances clients 180 M. Le délai clients est de…', options: ['25 jours', '90 jours', '180 jours'], answer: 1, explain: '180 / 720 × 360 = 90 jours.' },
+  { ch: 'rotation', q: 'CA stable de 1 080 M, délai clients qui passe de 45 à 75 jours. La trésorerie consommée est d’environ…', options: ['30 M', '90 M', '1 080 M'], answer: 1, explain: '1 080 / 360 = 3 M par jour, × 30 jours = 90 M.' },
+  { ch: 'structure', q: 'Capitaux propres 200, dettes MLT 150, découverts 90, trésorerie actif 40. Le gearing est de…', options: ['0,75', '1,0', '1,2'], answer: 1, explain: 'Dette nette = 150 + 90 − 40 = 200 ; 200 / 200 = 1,0.' },
+  { ch: 'remboursement', q: 'Dettes financières 400 M, CAF 80 M. La capacité de remboursement est de…', options: ['0,2 an', '3,2 ans', '5 ans'], answer: 2, explain: '400 / 80 = 5 ans : c’est la limite haute, un nouveau crédit serait difficile.' },
+  { ch: 'remboursement', q: 'CAF 84 M, service de la dette existante 20 M, nouvelle annuité 50 M. Le DSCR après projet est de…', options: ['1,2', '1,68', '4,2'], answer: 0, explain: '84 / (20 + 50) = 1,2 : sous le seuil de 1,3, le prêt est tendu.' },
+];
